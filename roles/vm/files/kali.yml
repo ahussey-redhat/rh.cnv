@@ -1,0 +1,4 @@
+---
+vm_source_pvc: bw-kali-tunnel1-latest
+vm_disk_size: 40
+vm_userdata_content: "{{ lookup('template', 'kali/userdata.j2') }}"

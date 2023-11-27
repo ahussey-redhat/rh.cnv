@@ -1,0 +1,18 @@
+#!/bin/bash
+{{ ansible_managed | comment }}
+
+hostnamectl set-hostname {{ vm_name }}.{{ vm_domain }}
+
+yum install -y \
+  http://{{ vm_satellite_capsule }}/pub/katello-ca-consumer-latest.noarch.rpm \
+subscription-manager clean
+subscription-manager register --org={{ vm_satellite_org}} --activationkey={{ vm_activation_key }}
+yum clean all
+
+systemctl enable --now sshd
+
+yum install -y yum-utils vim bash-completion
+yum update -y
+
+sed -i '.orig' -e 's/without-password/yes/' /etc/ssh/sshd_config
+systemctl restart sshd

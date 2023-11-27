@@ -1,0 +1,9 @@
+---
+vm_dns_configure: true
+vm_dns_infoblox_hostname: infoblox.lab.local
+vm_dns_delegate_to: localhost
+vm_dns_nios_provider:
+  host: "{{ vm_dns_infoblox_hostname }}"
+  username: "{{ vm_dns_nios_username }}"
+  password: "{{ vm_dns_nios_password }}"
+vm_dns_mac: "{{ '52:54:00' | community.general.random_mac(seed=inventory_hostname + '0') }}"

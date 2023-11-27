@@ -1,0 +1,113 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ vm_name }}
+  namespace: {{ vm_project }}
+  labels:
+    app: {{ vm_name }}
+    owner: {{ vm_owner }}
+    workload.template.kubevirt.io/server: 'true'
+spec:
+  dataVolumeTemplates:
+    - apiVersion: cdi.kubevirt.io/v1beta1
+      kind: DataVolume
+      metadata:
+        name: {{ vm_name }}
+      spec:
+        pvc:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: {{ vm_disk_size | default(vm_disk_size) }}Gi
+          storageClassName: ocs-storagecluster-ceph-rbd
+          volumeMode: Block
+        source:
+          pvc:
+            name: {{ vm_source_pvc | default(vm_source_pvc) }}
+            namespace: {{ vm_source_pvc_namespace }}
+  running: true
+  template:
+    metadata:
+      annotations:
+        vm.kubevirt.io/os: {{ vm_os }}
+        vm.kubevirt.io/workload: server
+      labels:
+        kubevirt.io/domain: {{ vm_name }}
+        kubevirt.io/size: large
+        vm.kubevirt.io/name: {{ vm_name }}
+        workload.template.kubevirt.io/server: 'true'
+    spec:
+{% if vm_ssh_pubkey %}
+      accessCredentials:
+        - sshPublicKey:
+            propagationMethod:
+              configDrive: {}
+            source:
+              secret:
+                secretName: authorizedsshkeys-{{ vm_name }}
+{% endif %}
+      domain:
+        cpu:
+          cores: {{ vm_cpu }}
+          sockets: 1
+          threads: {{ vm_cpu }}
+        devices:
+          disks:
+            - bootOrder: 1
+              disk:
+                bus: virtio
+              name: {{ vm_name }}
+            - disk:
+                bus: virtio
+              name: cloudinitdisk
+          interfaces:
+{% if vm_enable_default_network %}
+            - masquerade: {}
+              model: virtio
+              name: default
+{% endif %}
+{% if vm_networks is defined %}
+{% for interface in vm_networks %}
+{% if interface.type == "bridge" %}
+            - bridge: {}
+              model: virtio
+{% if interface.mac is defined %}
+              macAddress: {{ interface.mac }}
+{% else %}
+              macAddress: '{{ '52:54:00' | community.general.random_mac(seed=inventory_hostname + interface.source_vlan|string) }}'
+{% endif %}
+              name: nic{{ loop.index0 | string }}-{{ interface.source_vlan | string }}
+{% endif %}
+{% endfor %}
+{% endif %}
+          networkInterfaceMultiqueue: true
+          rng: {}
+        resources:
+          requests:
+            memory: {{ vm_memory }}Mi
+      evictionStrategy: LiveMigrate
+      hostname: {{ vm_name }}
+      networks:
+{% if vm_enable_default_network %}
+        - pod: {}
+          name: default
+{% endif %}
+{% if vm_networks is defined %}
+{% for interface in vm_networks %}
+{% if interface.type == "bridge" %}
+        - multus:
+            networkName: vlan{{ interface.source_vlan | string }}
+          name: nic{{ loop.index0 | string }}-{{ interface.source_vlan | string }}
+{% endif %}
+{% endfor %}
+{% endif %}
+      terminationGracePeriodSeconds: 180
+      volumes:
+        - dataVolume:
+            name: {{ vm_name }}
+          name: {{ vm_name }}
+        - cloudInitConfigDrive:
+            secretRef:
+              name: {{ vm_name }}-cloudconfig
+          name: cloudinitdisk

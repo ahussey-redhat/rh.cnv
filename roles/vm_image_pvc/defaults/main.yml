@@ -1,0 +1,4 @@
+---
+# defaults file for roles/vm_image_pvc
+pvc_images: []
+pvc_size: 20

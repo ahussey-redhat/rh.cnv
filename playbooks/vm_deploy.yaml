@@ -1,0 +1,42 @@
+- name: Update DNS and DHCP for VMs
+  hosts: all
+  # This is required currently since you need to be root to run playbooks on bastion.dev.lab.local
+  become: true
+  gather_facts: false
+  serial:
+   - 1
+   - 5
+  vars_prompt:
+    - name: vm_dns_nios_username
+      prompt: "Infoblox username [leave blank if you are not updating DNS]"
+      private: false
+    - name: vm_dns_nios_password
+      prompt: "Infoblox password [leave blank if you are not updating DNS]"
+  pre_tasks:
+    - name: End DNS playbook if infoblox username is blank
+      meta: end_play
+      when: not vm_dns_nios_username
+  roles:
+    - rh.cnv.vm_dns
+
+- name: Set up networking for VMs on the OpenShift cluster
+  hosts: localhost
+  become: false
+  gather_facts: true
+  roles:
+    - rh.cnv.vm_network
+
+- name: Create pvc images
+  hosts: localhost
+  become: false
+  gather_facts: true
+  roles:
+    - rh.cnv.vm_image_pvc
+
+- name: Deploy VMs
+  hosts: virtual_machines
+  become: false
+  gather_facts: false
+  connection: local
+  roles:
+    - rh.cnv.vm

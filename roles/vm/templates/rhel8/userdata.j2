@@ -1,0 +1,18 @@
+#cloud-config
+ssh_pwauth: 'true'
+disable_root: 'false'
+user: root
+password: "{{ vm_root_password }}"
+chpasswd:
+  expire: 'false'
+ssh_authorized_keys: 
+  - "{{ lookup('file', vm_ssh_key)}}"
+write_files:
+  - encoding: b64
+    content: "{{ lookup('template', 'rhel8/bootstrap.sh.j2') | b64encode }}"
+    path: /var/tmp/bootstrap.sh
+    owner: 'root:root'
+    permissions: '0770'
+runcmd:
+  - [sh, -c, /var/tmp/bootstrap.sh]
+  - [sh, -c, touch /etc/cloud/cloud-init.disabled]

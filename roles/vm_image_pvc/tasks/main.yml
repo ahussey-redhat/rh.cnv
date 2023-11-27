@@ -1,0 +1,57 @@
+---
+#tasks file for roles/vm_image_pvc
+- name: Create image directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ playbook_dir }}/images"
+
+- name: Download image
+  ansible.builtin.get_url:
+    url: " {{ item }}"
+    dest: "{{ playbook_dir }}/images/"
+  loop: "{{ pvc_images }}"
+
+- name: Get images in images directory
+  ansible.builtin.find:
+    path: "{{ playbook_dir }}/images/"
+    patterns: 
+      - "*.qcow2"
+  register: _image_files
+
+- name: Get the image name
+  ansible.builtin.set_fact:
+    _image_names: "{{ _image_files.files | map(attribute='path') | map('basename') | map('regex_replace', '^(.*)[-.]?x86_64.*$', '\\1') | map('regex_replace', '[-.]$','') | map('regex_replace', '\\.','-') | map('lower') | list }}"
+    # map('regex_replace', '^(.*)[-.]?x86_64.*$', '\\1') Match string that contains either 'x86_64' with a hyphen or dot infront of it, Replace it with the first capture group
+    # map('regex_replace', '[-.]$','') Match either a hyphen or dot that occurs at the end of the input string, Replace to nothing 
+    # map('regex_replace', '\\.','-') Match the '.', Replace to'-'
+    # map ('lower') Change to lower case
+
+- name: Change to openshift-virtualization-os-images project
+  ansible.builtin.shell: |
+    oc project openshift-virtualization-os-images
+  register: _project
+  changed_when: "'Already on project' not in _project.stdout"
+
+- name: Get current list of pvcs in openshift-virtualization-os-images project
+  ansible.builtin.shell: |
+    oc get pvc -o custom-columns=NAME:metadata.name
+  register: _pvc_list
+  changed_when: false
+    
+- name: Create a new list images comparing current _images_name list and _pvc_list 
+  ansible.builtin.set_fact:
+    _new_images: "{{ _image_names | difference(_pvc_list.stdout_lines) }}"
+
+- name: Create a dictionary of the image name and path
+  ansible.builtin.set_fact:
+    _image_data_dict: "{{ dict( _new_images | zip(_image_files.files | map(attribute='path')) )}}"
+
+- name: Create pvc if it doesn't exists
+  ansible.builtin.shell: |
+    virtctl image-upload dv {{ item.key }} --size {{ pvc_size }}Gi --image-path {{ item.value }} --storage-class ocs-storagecluster-ceph-rbd
+  loop: "{{ _image_data_dict | dict2items }}"
+
+- name: Remove image directory once completed
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/images"
+    state: absent

@@ -1,0 +1,36 @@
+---
+- name: Configure SSH keys if required
+  kubernetes.core.k8s:
+    state: present
+    resource_definition:
+      kind: Secret
+      apiVersion: v1
+      metadata:
+        name: "authorizedsshkeys-{{ vm_name }}"
+        namespace: "{{ vm_project }}"
+      data:
+        key: "{{ vm_ssh_pubkey | b64encode }}"
+  delegate_to: localhost
+  when: vm_ssh_pubkey
+
+- name: Configure cloud-init secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        namespace: "{{ vm_project }}"
+        name: "{{ vm_name }}-cloudconfig"
+      type: Opaque
+      data:
+        userdata: "{{ _content | b64encode }}"
+  vars:
+    _content: "{{ vm_userdata_content }}"
+  delegate_to: localhost
+
+- name: Deploy virtual machine
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'virtualmachine.yml.j2') }}"
+  delegate_to: localhost

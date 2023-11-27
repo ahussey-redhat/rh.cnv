@@ -1,0 +1,4 @@
+---
+vm_source_pvc: rhel89
+vm_disk_size: 40
+vm_userdata_content: "{{ lookup('template', 'rhel8/userdata.j2') }}"

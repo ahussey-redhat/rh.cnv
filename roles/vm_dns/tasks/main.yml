@@ -1,0 +1,59 @@
+---
+- name: Configure infoblox-client on the infoblox bastion host
+  ansible.builtin.pip:
+    name: infoblox-client
+  when: inventory_hostname == vm_dns_delegate_to
+
+- name: Don't configure dns for the controller host
+  ansible.builtin.meta: end_host
+  when: inventory_hostname == vm_dns_delegate_to
+
+- name: Don't configure dns if vm_dns_configure is false
+  ansible.builtin.meta: end_host
+  when: not vm_dns_configure
+
+- name: Get domain and allowed domains
+  ansible.builtin.set_fact:
+    _domain: "{{ inventory_hostname.split('.', 1 )[1]  }}"
+    _allowed_domains:
+    - "dev.lab.local"
+
+- name: Ensure that we don't accidentally configure the wrong domain
+  ansible.builtin.fail:
+    message: "Domain '{{ _domain }}' is not allowed to be configured"
+  when: _domain not in _allowed_domains
+
+- name: Configure DNS and DHCP
+  infoblox.nios_modules.nios_host_record:
+    name: "{{ inventory_hostname }}"
+    ipv4:
+      - address: "{{ vm_dns_primary_ip }}"
+        # mac addresses for the primary interface is seeded the same way as in the "vm" role
+        mac: "{{ vm_dns_mac  }}"
+        dhcp: true
+    provider: "{{ vm_dns_nios_provider }}"
+  delegate_to: "{{ vm_dns_delegate_to }}"
+  when: _domain in _allowed_domains
+
+- name: Get InfoBlox Grid ID
+  ansible.builtin.uri:
+    url: "https://{{ vm_dns_infoblox_hostname }}/wapi/v2.5/grid"
+    user: "{{ vm_dns_nios_username }}"
+    password: "{{ vm_dns_nios_password }}"
+    method: GET
+    validate_certs: no
+  register: _infoblox_grid
+  delegate_to: "{{ vm_dns_delegate_to }}"
+
+- name: Restart InfoBlox DHCP services if required
+  ansible.builtin.uri:
+    url: "https://{{ vm_dns_infoblox_hostname }}/wapi/v2.5/{{ _infoblox_grid['json'][0]['_ref'] }}?_function=restartservices"
+    user: "{{ vm_dns_nios_username }}"
+    password: "{{ vm_dns_nios_password }}"
+    method: POST
+    body: '{"restart_option": "RESTART_IF_NEEDED"}'
+    body_format: json
+    headers:
+      Content-Type: "application/json"
+    validate_certs: no
+  delegate_to: "{{ vm_dns_delegate_to }}"

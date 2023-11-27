@@ -1,0 +1,75 @@
+---
+- name: ensure projects exist
+  kubernetes.core.k8s:
+    state: present
+    resource_definition:
+      kind: ProjectRequest
+      apiVersion: project.openshift.io/v1
+      description: "{{ item.project | upper }} project"
+      displayName: "{{ item.project | upper }}"
+      metadata:
+        name: "{{ item.project }}"
+  delegate_to: localhost
+  loop: "{{ vm_network_attachments }}"
+
+- name: configure VM networks
+  kubernetes.core.k8s:
+    state: present
+    resource_definition:
+      apiVersion: nmstate.io/v1beta1
+      kind: NodeNetworkConfigurationPolicy
+      metadata:
+        name: "policy-vlan{{ item }}"
+      spec:
+        desiredState:
+          interfaces:
+            - name: "bond0.{{ item }}"
+              type: vlan
+              state: up
+              ipv4:
+                enabled: false
+              ipv6:
+                enabled: false
+              vlan:
+                base-iface: bond0
+                id: "{{ item }}"
+            - name: "br{{ item }}"
+              type: linux-bridge
+              state: up
+              ipv4:
+                enabled: false
+              ipv6:
+                enabled: false
+              bridge:
+                options:
+                  stp:
+                    enabled: false
+                port:
+                  - name: "bond0.{{ item }}"
+  loop: "{{ vm_network_vlans }}"
+  delegate_to: localhost
+
+- name: Configure network attachment definitions
+  kubernetes.core.k8s:
+    state: present
+    resource_definition:
+      apiVersion: k8s.cni.cncf.io/v1
+      kind: NetworkAttachmentDefinition
+      metadata:
+        annotations:
+          k8s.v1.cni.cncf.io/resourceName: "bridge.network.kubevirt.io/br{{ item.1  }}"
+        name: "vlan{{ item.1  }}"
+        namespace: "{{ item.0.project }}"
+      spec:
+        config: "{{ _networkattachmentdef | to_json | string }}"
+  loop: "{{ vm_network_attachments | subelements('vlans') }}"
+  vars:
+    _networkattachmentdef:
+      name: "vlan{{ item.1  }}"
+      cniVersion: 0.3.1
+      plugins:
+      - type: cnv-bridge
+        bridge: "br{{ item.1 }}"
+        ipam: {}
+      - type: cnv-tuning
+  delegate_to: localhost

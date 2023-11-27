@@ -1,0 +1,23 @@
+---
+# defaults file for vm
+vm_ssh_pubkey:
+vm_root_password: password
+vm_owner: User
+
+vm_domain: dev.lab.local
+vm_vlans: []
+vm_name: "{{ inventory_hostname_short }}"
+
+vm_os: rhel8
+
+vm_memory: 4096
+vm_cpu: 4
+vm_disk_size: 20
+vm_networks: []
+vm_enable_default_network: no
+
+vm_source_pvc_namespace: openshift-virtualization-os-images
+
+# rhel8 specific
+vm_satellite_capsule: satellite.lab.local
+vm_activation_key: rhel8
